@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx next:*)",
+      "Bash(chmod +x /Users/fatihbastan/Desktop/SoundSync/node_modules/.bin/next)",
+      "Bash(npm install:*)",
+      "Bash(node -e \"require\\(''lightningcss''\\)\")",
+      "Bash(grep -E \"\\(tsx|ts|json\\)$\")",
+      "Bash(curl -s \"http://localhost:3000/api/spotify/search?q=still&limit=6\")",
+      "Bash(curl -s \"http://localhost:3000/api/health\")"
+    ]
+  }
+}
