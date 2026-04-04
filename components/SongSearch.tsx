@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { apiUrl } from "@/lib/api";
 import type { SearchResult } from "@/types";
 
 interface SongSearchProps {
@@ -26,7 +27,7 @@ export default function SongSearch({ onSelect, disabled }: SongSearchProps) {
     setIsLoading(true);
     try {
       const res = await fetch(
-        `/api/spotify/search?q=${encodeURIComponent(q)}&limit=6`
+        apiUrl(`/api/spotify/search?q=${encodeURIComponent(q)}&limit=6`)
       );
       if (!res.ok) throw new Error("Search failed");
 

@@ -54,6 +54,22 @@ Next.js 16 · React 19 · TypeScript · Tailwind CSS · Framer Motion
 | `npm run dev` | Start dev server |
 | `npm run build` | Production build |
 | `npm run test` | Run tests |
+| `npm run mobile` | Build and open in Android Studio |
+
+## Android (Capacitor)
+
+ToneFlow can run as a native Android app via Capacitor.
+
+1. **Deploy the web app to Vercel first** (the mobile app calls your hosted API routes)
+2. Update the `NEXT_PUBLIC_API_URL` in `package.json`'s `build:mobile` script with your Vercel URL
+3. Run:
+   ```bash
+   npm run mobile
+   ```
+4. Android Studio opens — build and run on a device/emulator
+5. To generate a signed APK for the Play Store, use **Build > Generate Signed Bundle / APK** in Android Studio
+
+**Requirements:** [Android Studio](https://developer.android.com/studio) with SDK 22+
 
 ## License
 

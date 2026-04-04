@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { apiUrl } from "@/lib/api";
 import { useMicrophone } from "@/hooks/useMicrophone";
 import { usePitchDetection } from "@/hooks/usePitchDetection";
 import { useColorExtraction } from "@/hooks/useColorExtraction";
@@ -154,7 +155,7 @@ export default function ToneFlow() {
         if (newSong.durationMs) {
           params.set("duration", (newSong.durationMs / 1000).toString());
         }
-        const res = await fetch(`/api/lyrics?${params.toString()}`);
+        const res = await fetch(apiUrl(`/api/lyrics?${params.toString()}`));
         if (res.ok) {
           const data = await res.json();
           setLyrics(data.lyrics ?? []);
@@ -195,7 +196,7 @@ export default function ToneFlow() {
 
       try {
         const res = await fetch(
-          `/api/spotify/track?id=${result.spotifyTrackId}`
+          apiUrl(`/api/spotify/track?id=${result.spotifyTrackId}`)
         );
         if (res.ok) {
           setStatusText("Extracting album colors...");
@@ -237,7 +238,7 @@ export default function ToneFlow() {
       const formData = new FormData();
       formData.append("audio", audioBlob, "sample.webm");
 
-      const res = await fetch("/api/recognize", {
+      const res = await fetch(apiUrl("/api/recognize"), {
         method: "POST",
         body: formData,
       });

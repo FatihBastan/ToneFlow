@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { apiUrl } from "@/lib/api";
 import type { SongInfo } from "@/types";
 
 export function useSongRecognition() {
@@ -16,7 +17,7 @@ export function useSongRecognition() {
       const formData = new FormData();
       formData.append("audio", audioBlob, "sample.webm");
 
-      const res = await fetch("/api/recognize", {
+      const res = await fetch(apiUrl("/api/recognize"), {
         method: "POST",
         body: formData,
       });

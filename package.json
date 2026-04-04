@@ -9,13 +9,18 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:verbose": "vitest run --reporter=verbose",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:mobile": "NEXT_PUBLIC_API_URL=https://your-toneflow.vercel.app next build",
+    "cap:sync": "npx cap sync",
+    "cap:open": "npx cap open android",
+    "mobile": "npm run build:mobile && npm run cap:sync && npm run cap:open"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@capacitor/core": "^8.3.0",
     "@tailwindcss/postcss": "^4.2.2",
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
@@ -31,6 +36,8 @@
     "typescript": "^5.9.3"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.3.0",
+    "@capacitor/cli": "^8.3.0",
     "@types/crypto-js": "^4.2.2",
     "vitest": "^4.1.2"
   }
