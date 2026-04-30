@@ -7,6 +7,7 @@ import { useMicrophone } from "@/hooks/useMicrophone";
 import { usePitchDetection } from "@/hooks/usePitchDetection";
 import { useColorExtraction } from "@/hooks/useColorExtraction";
 import AnimatedBackground from "@/components/AnimatedBackground";
+import SpectrumVisualizer from "@/components/SpectrumVisualizer";
 import SongInfoDisplay from "@/components/SongInfo";
 import SongSearch from "@/components/SongSearch";
 import ModeSelector from "@/components/ModeSelector";
@@ -375,8 +376,10 @@ export default function ToneFlow() {
     const now = Date.now();
 
     // Helper: should we count this as a new note event?
+    // Requires pitch.stable so chaotic single-frame readings don't pump the streak.
     const isNewNoteEvent = (): boolean => {
       if (!p) return false;
+      if (!pitch.stable) return false;
       const noteName = p.noteName;
       const timeSinceLast = now - lastStreakTimeRef.current;
       // New note name, or same note held long enough
@@ -609,6 +612,25 @@ export default function ToneFlow() {
         feedback={feedback}
       />
 
+      {/* Live frequency spectrum — atmospheric strip behind the bottom UI.
+          Translucent bars rise from the very bottom edge so the NoteTrack and
+          Streak cards still sit cleanly on top without competition. */}
+      {mic.isActive && (
+        <div
+          className="fixed bottom-0 left-0 right-0 pointer-events-none"
+          style={{ zIndex: 1, height: "14vh", maxHeight: "120px" }}
+          aria-hidden="true"
+        >
+          <SpectrumVisualizer
+            analyser={mic.analyser}
+            colors={bgColors.length > 0 ? bgColors : undefined}
+            bars={72}
+            maxHeightFraction={0.85}
+            className="w-full h-full"
+          />
+        </div>
+      )}
+
       {/* Particle effects layer */}
       <ParticleEffects
         feedback={feedback}
@@ -663,10 +685,10 @@ export default function ToneFlow() {
                 exit={{ opacity: 0 }}
                 className="text-center"
               >
-                <h1 className="text-xl sm:text-2xl font-bold text-white/80 tracking-tight">
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight aurora-text">
                   ToneFlow
                 </h1>
-                <p className="text-xs text-white/30 mt-1">
+                <p className="text-xs text-white/35 mt-1 tracking-wide">
                   {selectedMode
                     ? `${modeConfig?.emoji} ${modeConfig?.label} mode`
                     : "Real-time music performance"}

@@ -37,8 +37,11 @@ export function useMicrophone() {
 
       const audioContext = new AudioContext({ sampleRate: 44100 });
       const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 2048;
-      analyser.smoothingTimeConstant = 0.8;
+      // 4096 doubles pitch resolution at the bottom of the range (bass/baritone)
+      // while still completing inside one animation frame on modest hardware.
+      analyser.fftSize = 4096;
+      // Only smooths frequency-domain reads (visualizer); time-domain (pitch) is unaffected.
+      analyser.smoothingTimeConstant = 0.6;
 
       const sourceNode = audioContext.createMediaStreamSource(stream);
       sourceNode.connect(analyser);

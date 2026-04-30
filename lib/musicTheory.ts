@@ -85,38 +85,76 @@ export function getCentsOff(frequency: number): number {
 }
 
 /**
- * Simple key estimation from a collection of detected note names.
- * Scores each possible key by how many of the detected notes
- * fall within its scale. Returns the best match.
+ * Krumhansl-Schmuckler tone profiles. Higher weights on the tonic, dominant,
+ * and mediant — the tones that actually establish a key — so the estimator
+ * doesn't tie between the seven keys that all share the same scale notes.
+ */
+const KRUMHANSL_MAJOR = [
+  6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88,
+];
+const KRUMHANSL_MINOR = [
+  6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17,
+];
+
+function pearsonCorrelation(a: number[], b: number[]): number {
+  const n = a.length;
+  let sumA = 0, sumB = 0;
+  for (let i = 0; i < n; i++) { sumA += a[i]; sumB += b[i]; }
+  const meanA = sumA / n;
+  const meanB = sumB / n;
+  let num = 0, denomA = 0, denomB = 0;
+  for (let i = 0; i < n; i++) {
+    const da = a[i] - meanA;
+    const db = b[i] - meanB;
+    num += da * db;
+    denomA += da * da;
+    denomB += db * db;
+  }
+  const denom = Math.sqrt(denomA * denomB);
+  return denom === 0 ? 0 : num / denom;
+}
+
+/**
+ * Estimate key by correlating the observed pitch-class histogram against
+ * Krumhansl-Schmuckler tone profiles for every major and minor key.
+ * This is dramatically more accurate than counting in-key notes because
+ * the profile weights the tonic and dominant heavily — the diatonic notes
+ * are not all equally diagnostic.
  */
 export function estimateKey(noteNames: string[]): KeyInfo {
   if (noteNames.length === 0) {
     return getKeyInfo("C", "Major");
   }
 
-  // Count occurrences of each pitch class
-  const counts = new Map<string, number>();
+  // Build the 12-bin pitch-class histogram
+  const histogram = new Array(12).fill(0);
   for (const n of noteNames) {
     const clean = n.replace(/\d+$/, "");
-    counts.set(clean, (counts.get(clean) || 0) + 1);
+    const idx = ALL_NOTES.indexOf(clean);
+    if (idx >= 0) histogram[idx]++;
   }
 
   let bestKey: KeyInfo = getKeyInfo("C", "Major");
-  let bestScore = -1;
+  let bestScore = -Infinity;
 
-  for (const root of ALL_NOTES) {
-    for (const quality of ["Major", "Minor"] as const) {
-      const key = getKeyInfo(root, quality);
-      let score = 0;
-      for (const [note, count] of counts) {
-        if (key.scaleNotes.includes(note)) {
-          score += count;
-        }
-      }
-      if (score > bestScore) {
-        bestScore = score;
-        bestKey = key;
-      }
+  for (let rootIdx = 0; rootIdx < 12; rootIdx++) {
+    // Rotate the profile so its first slot aligns with this candidate root
+    const rotatedMajor = new Array(12);
+    const rotatedMinor = new Array(12);
+    for (let i = 0; i < 12; i++) {
+      rotatedMajor[(rootIdx + i) % 12] = KRUMHANSL_MAJOR[i];
+      rotatedMinor[(rootIdx + i) % 12] = KRUMHANSL_MINOR[i];
+    }
+
+    const majorScore = pearsonCorrelation(histogram, rotatedMajor);
+    if (majorScore > bestScore) {
+      bestScore = majorScore;
+      bestKey = getKeyInfo(ALL_NOTES[rootIdx], "Major");
+    }
+    const minorScore = pearsonCorrelation(histogram, rotatedMinor);
+    if (minorScore > bestScore) {
+      bestScore = minorScore;
+      bestKey = getKeyInfo(ALL_NOTES[rootIdx], "Minor");
     }
   }
 

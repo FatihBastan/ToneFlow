@@ -50,14 +50,12 @@ export function detectPitch(
   }
 
   // --- Step 2: Find all positive peaks in the NSDF ---
-  // A peak is where nsdf[i] > nsdf[i-1] and nsdf[i] >= nsdf[i+1]
-  // and we've crossed zero from negative to positive before it.
   interface Peak {
     period: number;
     value: number;
   }
   const peaks: Peak[] = [];
-  let wasNegative = true; // Start assuming negative so first positive region counts
+  let wasNegative = true;
 
   for (let period = minPeriod + 1; period < maxPeriod; period++) {
     if (nsdfValues[period] < 0) {
@@ -65,15 +63,10 @@ export function detectPitch(
       continue;
     }
 
-    // Only consider peaks after a zero crossing (negative → positive)
-    if (
-      wasNegative &&
-      nsdfValues[period] > 0
-    ) {
+    if (wasNegative && nsdfValues[period] > 0) {
       wasNegative = false;
     }
 
-    // Check if this is a local maximum
     if (
       nsdfValues[period] > nsdfValues[period - 1] &&
       nsdfValues[period] >= nsdfValues[period + 1] &&
@@ -94,11 +87,6 @@ export function detectPitch(
   }
 
   // --- Step 4: Select the FIRST peak above the threshold ---
-  // This is the key to avoiding octave errors: the fundamental frequency
-  // always produces the first significant NSDF peak. Harmonics produce
-  // peaks at integer multiples of the fundamental period (later in the array).
-  // Using a threshold of 0.8 * globalMax catches the fundamental even when
-  // a harmonic peak is slightly stronger.
   const PEAK_THRESHOLD = 0.8;
   const threshold = globalMax * PEAK_THRESHOLD;
 
@@ -106,7 +94,7 @@ export function detectPitch(
   for (const peak of peaks) {
     if (peak.value >= threshold) {
       bestPeak = peak;
-      break; // Take the FIRST qualifying peak (shortest period = highest frequency = fundamental)
+      break;
     }
   }
 
@@ -140,8 +128,7 @@ export function detectPitch(
 }
 
 /**
- * Compute RMS volume level from audio buffer.
- * Returns value 0.0 - 1.0
+ * Compute RMS volume level from audio buffer (linear 0-1).
  */
 export function computeRMS(buffer: Float32Array): number {
   let sum = 0;
@@ -152,11 +139,68 @@ export function computeRMS(buffer: Float32Array): number {
 }
 
 /**
+ * High-pass filter the buffer in-place using a simple one-pole filter.
+ * Removes low-frequency rumble (AC hum, HVAC, mic handling) below ~50 Hz
+ * before pitch analysis. Cutoff is approximate.
+ */
+export function highPassFilter(buffer: Float32Array, sampleRate: number, cutoffHz = 55): void {
+  const rc = 1 / (2 * Math.PI * cutoffHz);
+  const dt = 1 / sampleRate;
+  const alpha = rc / (rc + dt);
+  let prevIn = buffer[0];
+  let prevOut = buffer[0];
+  for (let i = 1; i < buffer.length; i++) {
+    const out = alpha * (prevOut + buffer[i] - prevIn);
+    prevIn = buffer[i];
+    prevOut = out;
+    buffer[i] = out;
+  }
+}
+
+/**
+ * Apply a Hann window to the buffer in-place.
+ * Reduces spectral leakage so the NSDF peaks are sharper and more reliable.
+ */
+export function applyHannWindow(buffer: Float32Array): void {
+  const n = buffer.length;
+  for (let i = 0; i < n; i++) {
+    const w = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (n - 1)));
+    buffer[i] *= w;
+  }
+}
+
+/**
+ * Median-smooth a sequence of frequencies to reject single-frame outliers.
+ * Returns the median of `samples` (frequencies > 0). If fewer than 3 valid
+ * samples, returns the last one. Robust to occasional misdetections.
+ */
+export function medianFrequency(samples: number[]): number {
+  const valid = samples.filter((f) => f > 0);
+  if (valid.length === 0) return -1;
+  if (valid.length < 3) return valid[valid.length - 1];
+  const sorted = [...valid].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+/**
+ * Detect octave jumps between consecutive readings.
+ * If the new frequency is ~2x or ~0.5x of the previous AND clarity is similar,
+ * the new reading is likely an octave-error glitch — return the corrected freq.
+ */
+export function correctOctaveJump(prev: number, current: number): number {
+  if (prev <= 0) return current;
+  const ratio = current / prev;
+  // Within ±5% of half or double — almost certainly an octave error
+  if (Math.abs(ratio - 2) < 0.1) return current / 2;
+  if (Math.abs(ratio - 0.5) < 0.05) return current * 2;
+  return current;
+}
+
+/**
  * Simple heuristic to detect if audio sounds like vocals.
- * Vocals typically have fundamental frequency in 80-1600 Hz range
- * with strong harmonic content.
+ * Vocals typically have fundamental frequency in 80-1100 Hz range.
  */
 export function isLikelyVocal(frequency: number, rms: number): boolean {
   if (rms < 0.02) return false;
-  return frequency >= 80 && frequency <= 1600;
+  return frequency >= 80 && frequency <= 1100;
 }
