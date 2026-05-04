@@ -42,3 +42,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# benchmark datasets (multi-GB, downloaded on demand)
+/bench/datasets/
