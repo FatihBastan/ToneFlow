@@ -14,7 +14,7 @@
  * set (the mobile bundle uses it to reach the deployed API).
  */
 
-import { existsSync, renameSync } from "node:fs";
+import { existsSync, cpSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,14 +41,15 @@ let stashed = false;
 function restore() {
   if (stashed && existsSync(STASH_DIR)) {
     try {
+      // Copy stash → API_DIR (recreate, replacing any empty stubs Turbopack
+      // may have left behind). Using cpSync + rmSync instead of renameSync
+      // because macOS APFS rename of directories has edge cases that left
+      // ghost "<name> 2" directories on a previous run.
       if (existsSync(API_DIR)) {
-        // Shouldn't happen — but if it does, prefer the stash to avoid data loss.
-        console.error(
-          `[build-mobile] WARNING: ${API_DIR} reappeared during build; merging would be unsafe. Leaving stash at ${STASH_DIR}.`
-        );
-        return;
+        rmSync(API_DIR, { recursive: true, force: true });
       }
-      renameSync(STASH_DIR, API_DIR);
+      cpSync(STASH_DIR, API_DIR, { recursive: true });
+      rmSync(STASH_DIR, { recursive: true, force: true });
       stashed = false;
       console.log("[build-mobile] restored app/api/");
     } catch (err) {
@@ -79,7 +80,8 @@ if (existsSync(STASH_DIR)) {
 
 if (existsSync(API_DIR)) {
   console.log(`[build-mobile] stashing app/api/ → .api-stash/`);
-  renameSync(API_DIR, STASH_DIR);
+  cpSync(API_DIR, STASH_DIR, { recursive: true });
+  rmSync(API_DIR, { recursive: true, force: true });
   stashed = true;
 }
 

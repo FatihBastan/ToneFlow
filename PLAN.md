@@ -1,8 +1,66 @@
 # ToneFlow upgrade plan
 
-What to work on next, ordered by impact-to-effort. Updated 2026-05-04
-after the real-dataset benchmark pass — see `bench/RESULTS.md` for the
-numbers this plan is reacting to.
+What to work on next, ordered by impact-to-effort. Updated 2026-05-05.
+See `bench/RESULTS.md` for the measured numbers.
+
+---
+
+## Status as of 2026-05-05
+
+### Done
+- ✅ **Tier 1 #1** — adaptive RMS gate
+- ✅ **Tier 1 #2** — Goertzel sub-octave guard (organ +1.8 pts; flute
+  hypothesis was wrong but the guard is net-positive)
+- ✅ **Tier 1 #3** — per-mode threshold profiles (drums / vocals /
+  full_performance)
+- ✅ **Tier 2 #4** — CREPE-tiny ONNX, default-on for instrument modes.
+  **NSynth 66 → 73% exact, MDB 70 → 93% RPA** on the 5-stem prefix.
+  Vocals stay on NSDF (CREPE-tiny is *worse* on monophonic singing).
+  Model committed at `public/models/crepe-tiny.onnx` (1.9 MB);
+  onnxruntime-web WASM is bundled locally via
+  `scripts/copy-ort-wasm.mjs`; settings panel exposes a per-device
+  toggle.
+- ✅ **Tier 3 #9** — cents-tolerance label on the difficulty selector.
+  Plus a live cents-off readout in the instrument session note display.
+- ✅ **Bench infra** — `bench:nsynth` / `bench:mdb` / `bench:mir1k`
+  accept `--rms-gate`, `--clarity`, `--crepe`. Node-side
+  `CrepeDetector` mirrors the `StatefulDetector` contract.
+- ✅ **Mobile build fix** — `npm run build:mobile` actually works now.
+  `scripts/build-mobile.mjs` stashes `app/api/` outside the project
+  (the API routes are deployed to Vercel; they're not meant to live in
+  the APK). Robust to crashes / SIGINT / macOS APFS rename quirks via
+  `cpSync` + `rmSync` (an earlier `renameSync` version produced ghost
+  "<name> 2" directories on a flaky run).
+- ✅ **Settings panel** — gear icon top right; CREPE toggle, active
+  detector, effective RMS gate, measured noise floor, model error.
+- ✅ **Tests** — 639/641 (629 pre-existing + 6 Goertzel + 4 spectral
+  guard; the same 2 B6 unit tests are still pre-existing failures).
+
+### Partial
+- 🟡 **Tier 3 #8** — calibration UI is a small toast; no full splash
+  with measured noise floor display + manual recalibrate.
+
+### Not started
+- ⬜ **Tier 2 #5** — polyphonic detection ("song in the room"). Spotify
+  audio analysis API or a melody-extraction model. Separate product
+  surface from "play your guitar along".
+- ⬜ **Tier 3 #6** — per-instrument MedleyDB metadata (the dataset
+  itself doesn't carry instrument labels; the parent MedleyDB does).
+- ⬜ **Tier 3 #7** — Bach10 / MDB-melody-synth bench coverage for
+  polyphonic measurement.
+
+### What I'd do first when we come back
+1. **Trim mobile WASM bundle** — currently 73 MB of WASM ships in the
+   APK because we copy all four ORT variants. Capacitor's WebView only
+   needs the asyncify variant (~22 MB) without COOP/COEP. Pruning
+   would save ~50 MB of APK size. ~15 min.
+2. **Tier 3 #8 calibration splash** — block session start until
+   calibration completes, show measured noise floor with quiet /
+   moderate / loud label, give the user a "recalibrate" button. ~45 min.
+3. **Full 30-stem CREPE MDB bench** — confirm the 93% number on the
+   full set (the run we kicked off this session was killed at stem ~20).
+
+---
 
 ## Tier 1 status (shipped 2026-05-04)
 
