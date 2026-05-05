@@ -17,7 +17,7 @@
     "bench:mdb": "tsx bench/mdbStemSynth.ts",
     "bench:mir1k": "tsx bench/mir1k.ts",
     "bench:smoke": "tsx bench/smokeTest.ts",
-    "build:mobile": "NEXT_PUBLIC_API_URL=https://your-toneflow.vercel.app next build",
+    "build:mobile": "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://your-toneflow.vercel.app} node scripts/build-mobile.mjs",
     "cap:sync": "npx cap sync",
     "cap:open": "npx cap open android",
     "mobile": "npm run build:mobile && npm run cap:sync && npm run cap:open"

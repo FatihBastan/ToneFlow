@@ -49,3 +49,7 @@ next-env.d.ts
 
 # benchmark datasets (multi-GB, downloaded on demand)
 /bench/datasets/
+
+# Mobile build stash for app/api/ (always temporary; if you see this
+# committed, something interrupted scripts/build-mobile.mjs)
+/.api-stash/
