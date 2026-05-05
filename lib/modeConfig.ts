@@ -11,6 +11,14 @@ export const MODE_CONFIGS: Record<PerformanceMode, ModeConfig> = {
     tracksRhythm: false,
     showLyrics: "full",
     judgesCorrectness: true,
+    // Voice is highly harmonic; quiet sustains and breathy phrasing
+    // produce lower NSDF peaks than instruments. Lower the gate.
+    clarityThreshold: 0.65,
+    // Hold the RMS gate at the legacy default — the lower adaptive
+    // floor lifts MIR-1K voicing recall but tanks RPA by 5 pts because
+    // breath sounds and inter-phrase noise become voiced false alarms.
+    // Vocals get a fixed gate; instruments still benefit from adaptive.
+    rmsGate: 0.018,
   },
   guitar: {
     id: "guitar",
@@ -55,6 +63,9 @@ export const MODE_CONFIGS: Record<PerformanceMode, ModeConfig> = {
     tracksRhythm: true,
     showLyrics: "none",
     judgesCorrectness: true,
+    // Drums is RMS-spike based; a high gate keeps ambient/bleed out.
+    // Set explicitly so adaptive calibration does not lower it.
+    rmsGate: 0.05,
   },
   full_performance: {
     id: "full_performance",
@@ -66,6 +77,11 @@ export const MODE_CONFIGS: Record<PerformanceMode, ModeConfig> = {
     tracksRhythm: false,
     showLyrics: "full",
     judgesCorrectness: true,
+    // Same shape as vocals: high gate so inter-phrase breaths are not
+    // counted as note events; clarity stays loose so the voice still
+    // registers when the singer is between strums.
+    clarityThreshold: 0.65,
+    rmsGate: 0.018,
   },
   free_play: {
     id: "free_play",

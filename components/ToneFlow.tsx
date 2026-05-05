@@ -20,6 +20,7 @@ import DrumSession from "@/components/sessions/DrumSession";
 import FullPerformanceSession from "@/components/sessions/FullPerformanceSession";
 import FreePlaySession from "@/components/sessions/FreePlaySession";
 import { MODE_CONFIGS } from "@/lib/modeConfig";
+import { getFeatureFlags, setFeatureFlag } from "@/lib/featureFlags";
 import { getKeyInfo, isNoteInKeyWithTolerance, estimateKey } from "@/lib/musicTheory";
 import { DIFFICULTY_CONFIGS } from "@/lib/difficultyConfig";
 import DifficultySelector from "@/components/DifficultySelector";
@@ -90,7 +91,37 @@ export default function ToneFlow() {
 
   // ── Hooks ──
   const mic = useMicrophone();
-  const pitch = usePitchDetection(mic.analyser, mic.audioContext);
+
+  // Feature flags. CREPE opt-in is read once at mount; toggling later
+  // requires a session restart. Honour `?crepe=1` URL param so testers
+  // can enable it without DevTools.
+  const flagsRef = useRef(getFeatureFlags());
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("crepe") === "1") {
+      setFeatureFlag("crepe", true);
+      flagsRef.current = getFeatureFlags();
+    }
+  }, []);
+
+  // Per-mode threshold profiles: drums forces a high RMS gate, vocals
+  // lowers clarity. Anything else inherits adaptive calibration.
+  // CREPE only activates for instrument-pitch modes — vocals/drums skip it.
+  const usesCrepe =
+    flagsRef.current.crepe &&
+    !!selectedMode &&
+    selectedMode !== "vocals" &&
+    selectedMode !== "drums" &&
+    selectedMode !== "auto_detect";
+  const pitchOpts = selectedMode
+    ? {
+        rmsGate: MODE_CONFIGS[selectedMode].rmsGate,
+        clarityThreshold: MODE_CONFIGS[selectedMode].clarityThreshold,
+        useCrepe: usesCrepe,
+      }
+    : undefined;
+  const pitch = usePitchDetection(mic.analyser, mic.audioContext, pitchOpts);
 
   // ── Vocal word feedback (from speech recognition matching) ──
   const handleVocalWordFeedback = useCallback((type: "correct" | "wrong") => {
@@ -951,6 +982,54 @@ export default function ToneFlow() {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Mic calibration toast — shown for ~2s when a session begins so
+          the user knows the gate is adaptive and not just unresponsive. */}
+      <AnimatePresence>
+        {pitch.calibrating && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+            role="status"
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-30 glass px-4 py-2 text-xs text-white/70 flex items-center gap-2"
+          >
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
+            Calibrating mic — hold still…
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* CREPE model load + status toast (only visible when the flag is on). */}
+      <AnimatePresence>
+        {pitch.pitchModelLoading && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+            role="status"
+            className="fixed top-32 left-1/2 -translate-x-1/2 z-30 glass px-4 py-2 text-xs text-white/70 flex items-center gap-2"
+          >
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+            Loading CREPE model…
+          </motion.div>
+        )}
+        {pitch.pitchModelError && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+            role="alert"
+            className="fixed top-32 left-1/2 -translate-x-1/2 z-30 glass px-4 py-2 text-xs text-amber-300/80 flex items-center gap-2 max-w-sm"
+          >
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />
+            CREPE unavailable — falling back to autocorrelator.
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Session summary overlay */}
       <AnimatePresence>

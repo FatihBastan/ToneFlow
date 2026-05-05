@@ -1,7 +1,45 @@
 /**
+ * Goertzel single-bin DFT magnitude at `targetFreq`. Cheap (~N multiplies)
+ * compared to a full FFT — used to probe energy at one frequency only.
+ *
+ * Returns 0 if the bin is out of range (target frequency below/above
+ * the buffer's representable spectrum).
+ */
+export function goertzelMagnitude(
+  buffer: Float32Array,
+  sampleRate: number,
+  targetFreq: number
+): number {
+  const N = buffer.length;
+  if (targetFreq <= 0 || targetFreq >= sampleRate / 2) return 0;
+
+  const omega = (2 * Math.PI * targetFreq) / sampleRate;
+  const cosOmega = Math.cos(omega);
+  const sinOmega = Math.sin(omega);
+  const coeff = 2 * cosOmega;
+
+  let q1 = 0;
+  let q2 = 0;
+  for (let i = 0; i < N; i++) {
+    const q0 = buffer[i] + coeff * q1 - q2;
+    q2 = q1;
+    q1 = q0;
+  }
+  const real = q1 - q2 * cosOmega;
+  const imag = q2 * sinOmega;
+  return Math.sqrt(real * real + imag * imag);
+}
+
+/**
  * Autocorrelation-based pitch detection using NSDF with proper
  * fundamental frequency selection (picks first qualifying peak,
  * not the global maximum, to avoid octave errors with harmonic signals).
+ *
+ * Also runs a spectral sub-octave guard: when the detected frequency's
+ * FFT bin has a sibling at half the frequency with ≥ 40% of its
+ * magnitude, the true fundamental sits one octave down (the NSDF
+ * locked onto a dominant harmonic). Helps organ stops with weak
+ * fundamentals; the threshold is tuned to leave vocals alone.
  */
 export function detectPitch(
   buffer: Float32Array,
@@ -103,6 +141,7 @@ export function detectPitch(
   }
 
   // --- Step 5: Parabolic interpolation for sub-sample accuracy ---
+  let detectedFreq = sampleRate / bestPeak.period;
   const shift = bestPeak.period;
   if (shift > 0 && shift < bufferSize - 1) {
     const s0 = nsdfValues[shift - 1];
@@ -113,16 +152,32 @@ export function detectPitch(
     if (denom !== 0) {
       const refinedShift = shift + (s2 - s0) / (2 * denom);
       if (refinedShift > 0) {
-        return {
-          frequency: sampleRate / refinedShift,
-          clarity: bestPeak.value,
-        };
+        detectedFreq = sampleRate / refinedShift;
       }
     }
   }
 
+  // --- Step 6: Spectral sub-octave check (octave-up safeguard) ---
+  // The NSDF can lock onto the harmonic period when the fundamental is
+  // weak (e.g. organ stops where the 2nd partial dominates). Probe the
+  // FFT bin at half the detected frequency: if a real subharmonic is
+  // present with comparable energy, drop the answer one octave.
+  //
+  // Threshold tuned to fire on dominant 2nd-harmonic patterns without
+  // tripping on female vocals — breath/vibrato leak some sub-octave
+  // energy but the ratio stays well below 0.5 in practice.
+  const subOctaveFreq = detectedFreq / 2;
+  if (subOctaveFreq >= minFreq && subOctaveFreq >= 65) {
+    const magCandidate = goertzelMagnitude(buffer, sampleRate, detectedFreq);
+    const magSub = goertzelMagnitude(buffer, sampleRate, subOctaveFreq);
+    const SUB_OCTAVE_THRESHOLD = 0.4;
+    if (magCandidate > 0 && magSub / magCandidate >= SUB_OCTAVE_THRESHOLD) {
+      detectedFreq = subOctaveFreq;
+    }
+  }
+
   return {
-    frequency: sampleRate / bestPeak.period,
+    frequency: detectedFreq,
     clarity: bestPeak.value,
   };
 }

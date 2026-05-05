@@ -24,6 +24,10 @@ export interface ModeConfig {
   tracksRhythm: boolean;
   showLyrics: "full" | "blurred" | "none";
   judgesCorrectness: boolean; // false for free_play
+  /** Override RMS gate for this mode. If set, skips adaptive calibration. */
+  rmsGate?: number;
+  /** Override clarity threshold for the NSDF best-peak gate. */
+  clarityThreshold?: number;
 }
 
 // ─── Feedback ────────────────────────────────────────────────

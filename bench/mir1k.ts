@@ -24,6 +24,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { loadWavStereo } from "./lib/wav";
 import { StatefulDetector } from "./lib/detector";
+import { CrepeDetector, loadCrepeNode } from "./lib/crepeDetector";
 import {
   newAccumulator,
   addFrame,
@@ -67,15 +68,22 @@ function loadPvAnnotations(path: string): Float32Array {
   return out;
 }
 
-function scoreClip(samples: Float32Array, sr: number, refFreqs: Float32Array): FrameAccumulator {
+async function scoreClip(
+  samples: Float32Array,
+  sr: number,
+  refFreqs: Float32Array,
+  detOpts: { rmsGate?: number; clarityThreshold?: number; useCrepe?: boolean } = {}
+): Promise<FrameAccumulator> {
   const acc = newAccumulator();
-  const det = new StatefulDetector();
+  const det = detOpts.useCrepe
+    ? new CrepeDetector({ rmsGate: detOpts.rmsGate })
+    : new StatefulDetector(detOpts);
   for (let i = 0; i < refFreqs.length; i++) {
     const labelTime = FIRST_LABEL_S + i * HOP_S;
     const center = Math.round(labelTime * sr);
     const frame = frameAt(samples, center, FRAME_SIZE);
     if (!frame) continue;
-    const detFreq = det.detect(frame, sr);
+    const detFreq = await Promise.resolve(det.detect(frame, sr));
     addFrame(acc, refFreqs[i], detFreq);
   }
   return acc;
@@ -94,11 +102,28 @@ async function main() {
     console.error(`--channel must be right (vocals), mix, or left (accompaniment)`);
     process.exit(1);
   }
+  const detOpts: {
+    rmsGate?: number;
+    clarityThreshold?: number;
+    useCrepe?: boolean;
+  } = {};
+  if (flags["rms-gate"]) detOpts.rmsGate = parseFloat(flags["rms-gate"]);
+  if (flags.clarity) detOpts.clarityThreshold = parseFloat(flags.clarity);
+  if (flags.crepe !== undefined) detOpts.useCrepe = true;
 
   console.log(c.bold(c.cyan("MIR-1K vocal benchmark")));
   console.log(c.dim(`Root: ${root}`));
   console.log(c.dim(`Channel: ${channel}  (right = clean vocals; mix = with accompaniment)`));
   if (limit) console.log(c.dim(`Limit: ${limit}`));
+  if (detOpts.rmsGate !== undefined) console.log(c.dim(`RMS gate: ${detOpts.rmsGate}`));
+  if (detOpts.clarityThreshold !== undefined) console.log(c.dim(`Clarity threshold: ${detOpts.clarityThreshold}`));
+  if (detOpts.useCrepe) console.log(c.dim(`Detector: CREPE-tiny ONNX`));
+
+  if (detOpts.useCrepe) {
+    process.stdout.write(c.dim("Loading CREPE model... "));
+    await loadCrepeNode();
+    console.log(c.dim("done"));
+  }
 
   const idx = loadIndex(root, limit);
   console.log(c.dim(`Loaded ${idx.length} clip pairs`));
@@ -118,7 +143,7 @@ async function main() {
         for (let j = 0; j < mono.length; j++) mono[j] = (wav.left[j] + wav.right[j]) * 0.5;
       }
       const refs = loadPvAnnotations(row.ann);
-      const acc = scoreClip(mono, wav.sampleRate, refs);
+      const acc = await scoreClip(mono, wav.sampleRate, refs, detOpts);
       overall.voicedRef += acc.voicedRef;
       overall.unvoicedRef += acc.unvoicedRef;
       overall.detectedOnVoiced += acc.detectedOnVoiced;

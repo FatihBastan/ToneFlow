@@ -32,6 +32,9 @@ export class StatefulDetector {
     clarityThreshold?: number;
   } = {}) {
     this.historySize = opts.historySize ?? 5;
+    // Default matches the live hook's pre-adaptive fallback (and the
+    // vocals-mode explicit override). To simulate the quiet-room case
+    // instruments see post-calibration, run with `--rms-gate 0.005`.
     this.rmsGate = opts.rmsGate ?? 0.018;
     this.clarityThreshold = opts.clarityThreshold ?? 0.78;
   }

@@ -21,6 +21,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { loadWav } from "./lib/wav";
 import { StatefulDetector } from "./lib/detector";
+import { CrepeDetector, loadCrepeNode } from "./lib/crepeDetector";
 import {
   newAccumulator,
   addFrame,
@@ -99,17 +100,22 @@ function loadAnnotations(path: string): { times: Float64Array; freqs: Float32Arr
   return { times, freqs };
 }
 
-function scoreStem(pair: StemPair): { acc: FrameAccumulator; instrument: string } {
+async function scoreStem(
+  pair: StemPair,
+  detOpts: { rmsGate?: number; clarityThreshold?: number; useCrepe?: boolean } = {}
+): Promise<{ acc: FrameAccumulator; instrument: string }> {
   const wav = loadWav(pair.audioPath);
   const ann = loadAnnotations(pair.annPath);
   const acc = newAccumulator();
-  const det = new StatefulDetector();
+  const det = detOpts.useCrepe
+    ? new CrepeDetector({ rmsGate: detOpts.rmsGate })
+    : new StatefulDetector(detOpts);
 
   for (let i = 0; i < ann.times.length; i++) {
     const center = Math.round(ann.times[i] * wav.sampleRate);
     const frame = frameAt(wav.samples, center, FRAME_SIZE);
     if (!frame) continue;
-    const detFreq = det.detect(frame, wav.sampleRate);
+    const detFreq = await Promise.resolve(det.detect(frame, wav.sampleRate));
     addFrame(acc, ann.freqs[i], detFreq);
   }
   return { acc, instrument: pair.instrumentGuess };
@@ -179,11 +185,28 @@ async function main() {
   }
   const limit = flags.limit ? parseInt(flags.limit, 10) : undefined;
   const instrumentFilter = flags.instrument;
+  const detOpts: {
+    rmsGate?: number;
+    clarityThreshold?: number;
+    useCrepe?: boolean;
+  } = {};
+  if (flags["rms-gate"]) detOpts.rmsGate = parseFloat(flags["rms-gate"]);
+  if (flags.clarity) detOpts.clarityThreshold = parseFloat(flags.clarity);
+  if (flags.crepe !== undefined) detOpts.useCrepe = true;
 
   console.log(c.bold(c.cyan("MDB-stem-synth benchmark")));
   console.log(c.dim(`Root: ${root}`));
   if (limit) console.log(c.dim(`Limit: ${limit} stems`));
   if (instrumentFilter) console.log(c.dim(`Instrument filter: ${instrumentFilter}`));
+  if (detOpts.rmsGate !== undefined) console.log(c.dim(`RMS gate: ${detOpts.rmsGate}`));
+  if (detOpts.clarityThreshold !== undefined) console.log(c.dim(`Clarity threshold: ${detOpts.clarityThreshold}`));
+  if (detOpts.useCrepe) console.log(c.dim(`Detector: CREPE-tiny ONNX`));
+
+  if (detOpts.useCrepe) {
+    process.stdout.write(c.dim("Loading CREPE model... "));
+    await loadCrepeNode();
+    console.log(c.dim("done"));
+  }
 
   const pairs = loadIndex(root, limit, instrumentFilter);
   console.log(c.dim(`Found ${pairs.length} stem pairs`));
@@ -194,7 +217,7 @@ async function main() {
     const p = pairs[i];
     process.stdout.write(`  [${i + 1}/${pairs.length}] ${p.stemName.slice(0, 50).padEnd(50)}\r`);
     try {
-      const { acc, instrument } = scoreStem(p);
+      const { acc, instrument } = await scoreStem(p, detOpts);
       perStem.push({ stem: p.stemName, instrument, acc });
     } catch (e) {
       console.error(`\nSkip ${p.stemName}: ${(e as Error).message}`);

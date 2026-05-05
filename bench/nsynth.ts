@@ -20,6 +20,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { loadWav } from "./lib/wav";
 import { StatefulDetector } from "./lib/detector";
+import { CrepeDetector, loadCrepeNode } from "./lib/crepeDetector";
 import { frameAt, midiToHz, parseArgs, c } from "./lib/util";
 import { frequencyToMidi } from "../lib/noteMapping";
 
@@ -78,15 +79,17 @@ interface PerClipResult {
   source: string;
 }
 
-function scoreClip(
+async function scoreClip(
   samples: Float32Array,
   sr: number,
   refMidi: number,
   family: string,
   source: string,
-  detOpts: { rmsGate?: number; clarityThreshold?: number } = {}
-): PerClipResult {
-  const det = new StatefulDetector(detOpts);
+  detOpts: { rmsGate?: number; clarityThreshold?: number; useCrepe?: boolean } = {}
+): Promise<PerClipResult> {
+  const det = detOpts.useCrepe
+    ? new CrepeDetector({ rmsGate: detOpts.rmsGate })
+    : new StatefulDetector(detOpts);
   const refHz = midiToHz(refMidi);
 
   // 1) Find the energy peak — that's where the user actually hears the note.
@@ -112,7 +115,7 @@ function scoreClip(
   for (let i = startSample; i + FRAME_SIZE < endSample; i += HOP_SIZE) {
     const frame = frameAt(samples, i + FRAME_SIZE / 2, FRAME_SIZE);
     if (!frame) continue;
-    const f = det.detect(frame, sr);
+    const f = await Promise.resolve(det.detect(frame, sr));
     if (f <= 0) continue;
     const midi = frequencyToMidi(f);
     bins.set(midi, (bins.get(midi) ?? 0) + 1);
@@ -219,9 +222,14 @@ async function main() {
   }
   const limit = flags.limit ? parseInt(flags.limit, 10) : undefined;
   const familyFilter = flags.family;
-  const detOpts: { rmsGate?: number; clarityThreshold?: number } = {};
+  const detOpts: {
+    rmsGate?: number;
+    clarityThreshold?: number;
+    useCrepe?: boolean;
+  } = {};
   if (flags["rms-gate"]) detOpts.rmsGate = parseFloat(flags["rms-gate"]);
   if (flags.clarity) detOpts.clarityThreshold = parseFloat(flags.clarity);
+  if (flags.crepe !== undefined) detOpts.useCrepe = true;
 
   console.log(c.bold(c.cyan("NSynth-test pitch detection benchmark")));
   console.log(c.dim(`Root: ${root}`));
@@ -229,6 +237,13 @@ async function main() {
   if (familyFilter) console.log(c.dim(`Family filter: ${familyFilter}`));
   if (detOpts.rmsGate !== undefined) console.log(c.dim(`RMS gate: ${detOpts.rmsGate}`));
   if (detOpts.clarityThreshold !== undefined) console.log(c.dim(`Clarity threshold: ${detOpts.clarityThreshold}`));
+  if (detOpts.useCrepe) console.log(c.dim(`Detector: CREPE-tiny ONNX`));
+
+  if (detOpts.useCrepe) {
+    process.stdout.write(c.dim("Loading CREPE model... "));
+    await loadCrepeNode();
+    console.log(c.dim("done"));
+  }
 
   const rows = loadIndex(root, limit, familyFilter);
   console.log(c.dim(`Loaded index: ${rows.length} clips`));
@@ -246,7 +261,7 @@ async function main() {
       console.error(`Skip ${r.filename}: ${(e as Error).message}`);
       continue;
     }
-    const result = scoreClip(wav.samples, wav.sampleRate, r.pitch, r.family, r.source, detOpts);
+    const result = await scoreClip(wav.samples, wav.sampleRate, r.pitch, r.family, r.source, detOpts);
     results.push(result);
 
     if (i + 1 >= nextLog) {

@@ -4,6 +4,49 @@ What to work on next, ordered by impact-to-effort. Updated 2026-05-04
 after the real-dataset benchmark pass — see `bench/RESULTS.md` for the
 numbers this plan is reacting to.
 
+## Tier 1 status (shipped 2026-05-04)
+
+- **Item 1 (adaptive RMS gate)** — shipped. `usePitchDetection` now spends
+  the first 2s of each session sampling the room's noise floor, then sets
+  the gate to `clamp(noiseFloor × 3, 0.005, 0.025)`. A "Calibrating mic…"
+  toast surfaces the calibration window. The win lands in the live mic
+  flow for instrument modes — see RESULTS.md "adaptive floor" column for
+  the magnitude (MDB RPA 55.5% → ~70%, NSynth +0.7 pts).
+- **Item 2 (spectral fundamental check)** — shipped. Goertzel sub-octave
+  probe at threshold 0.4 fires when half the detected frequency has ≥40%
+  of the candidate's FFT magnitude. The targeted flute fix did not
+  materialize (NSynth flute errors are octave-DOWN, not -UP — the probe
+  never fires there) but it consistently lifts organ exact accuracy
+  60.4% → 62.2% (+1.8 pts, -7 octave errors out of 502). MIR-1K 100-clip
+  RPA holds at 89.0% (-0.1 vs baseline, well above the 88% floor); full
+  1000-clip set is unchanged within noise (84.8% → 84.7%). Goertzel is
+  also exposed as a public primitive (`goertzelMagnitude`) for future
+  spectral checks.
+- **Item 3 (per-mode threshold profiles)** — shipped. `MODE_CONFIGS`
+  carries optional `rmsGate` and `clarityThreshold`:
+  - **drums**: `rmsGate: 0.05` — skips adaptive; ambient bleed and
+    fan noise should not register as percussive hits.
+  - **vocals**: `rmsGate: 0.018, clarityThreshold: 0.65` — keeps the
+    pre-adaptive gate so MIR-1K RPA stays at 89.1%; lower clarity lets
+    breathy phrasing register.
+  - **everything else**: inherits adaptive calibration; quiet rooms get
+    the 0.005 floor and the MDB lift.
+
+Constraints held: 635/637 unit tests passing (629 pre-existing + 6
+Goertzel tests; same 2 B6 cases still failing). MIR-1K full-set RPA back
+at the 89% baseline post-revert. The only thing the bench fully measures
+is the legacy `rmsGate=0.018` path; the live adaptive lift requires
+running with `--rms-gate 0.005` to simulate the quiet-room gate.
+
+Bonus polish shipped alongside:
+- **Tier 3 #9** — difficulty selector now displays the cents tolerance
+  per option (e.g. "Easy any in-key", "Medium ±35¢", "Hard ±15¢").
+- Bench scripts `bench:mdb` and `bench:mir1k` now accept `--rms-gate`
+  and `--clarity` flags, so anyone can reproduce the adaptive-floor
+  numbers without code changes.
+
+---
+
 ---
 
 ## Where we stand
@@ -69,13 +112,50 @@ The realistic path to instrument SOTA. CREPE-tiny is ~6 MB ONNX, runs
 in WASM via `onnxruntime-web`. Closes the gap from ~66% to ~92% on
 NSynth and MDB.
 
-- Use only for instrument modes where per-note feedback matters
-  (guitar/bass/piano/full_performance).
-- Fall back to the autocorrelator if model load fails.
-- Lazy-load the model — don't block first paint.
+**Status — shipped 2026-05-05 with measured numbers (flag-gated, model not bundled).**
 
-Cost: bundle size, ONNX runtime is ~2 MB compressed. Worth it for
-instrument modes. Ship behind a flag first.
+Live + bench infrastructure:
+- `lib/crepePitch.ts` (browser) and `bench/lib/crepeDetector.ts` (Node)
+  are sibling wrappers around the same ONNX model — identical
+  resample/normalize/post-process pipeline, different ORT runtimes
+  (`onnxruntime-web` vs `onnxruntime-node`).
+- `lib/featureFlags.ts` — opt-in store. URL `?crepe=1`, localStorage
+  `toneflow.flags`, or `NEXT_PUBLIC_TONEFLOW_CREPE=1` at build time.
+- `usePitchDetection` runs CREPE async per frame and falls through to
+  NSDF when inference is in flight or fails — UI never freezes.
+- ToneFlow gates the flag to instrument-pitch modes (guitar / bass /
+  piano / free_play / full_performance). Vocals/drums/auto_detect skip
+  CREPE because CREPE-tiny is *worse* than the autocorrelator on
+  monophonic vocals (see numbers below).
+- Bench scripts accept `--crepe`. Loads
+  `public/models/crepe-tiny.onnx` once, runs inference per frame.
+
+**Measured impact** (1.9 MB CREPE-tiny, the smallest variant):
+
+| dataset | NSDF | CREPE-tiny | Δ |
+|---|---:|---:|---:|
+| NSynth full (4096 clips) | 66.1% exact | **73.4%** | **+7.3 pts** |
+| NSynth octave-error rate | 12.9% | **6.9%** | almost halved |
+| MDB-stem-synth (5-stem, 307k frames) | 61.4% RPA (default) / 70.0% (adaptive floor) | **93.4%** RPA | **+23–32 pts** |
+| MIR-1K 100-clip vocals | 89.0% RPA | 86.2% RPA | **−2.8** (CREPE-tiny too small for vocals) |
+
+Per-family NSynth wins: string +10.5, mallet +12.3, bass +10.6, guitar
++9.2. Flute is still capped (most flute clips are above the model's
+2 kHz output ceiling — same structural cap as `maxFreq=2000`).
+
+What's not done yet:
+- Capacitor mobile builds load ORT WASM from a jsdelivr CDN (fine for
+  web, broken offline). A postinstall copy of the WASM artifacts into
+  `public/ort/` plus `env.wasm.wasmPaths = "/ort/"` would fix it.
+- No on-screen toggle. Flag is set via URL/DevTools/env. Now that we
+  know it works, a settings panel makes sense.
+- CREPE inference is ~50× slower per frame than NSDF on CPU; full MDB
+  (30 stems, 2.4 M frames) would take ~3 hours. The 5-stem prefix is
+  representative but the published number should be the full set
+  eventually.
+- The model itself (`crepe-tiny.onnx`, 1.9 MB) is not in git. See
+  [public/models/README.md](../public/models/README.md) for the
+  conversion recipe.
 
 ### 5. Polyphonic detection for "song in the room" use case
 Right now `auto_detect` mode uses ACRCloud (cloud fingerprinting) to ID
@@ -120,13 +200,17 @@ why "easy" is forgiving.
 |---|---|---|
 | PEAK_THRESHOLD < 0.8 | NSynth dropped 5+ pts | Lets noise spikes win the "first peak" race |
 | PEAK_THRESHOLD > 0.8 | B6 unit test breaks | Edge-of-range fundamental falls below threshold |
-| Lower RMS gate (0.018 → 0.002) | +6% detected, +0% exact | Added detections are wrong notes |
+| Lower RMS gate (0.018 → 0.002) on **NSynth** | +6% detected, +0% exact | Added detections are wrong notes |
 | Lower clarity (0.78 → 0.5) | Same | Lets through low-confidence guesses |
 | Sub-octave NSDF validation (check 2T) | 469 unit tests broke | Real fundamentals DO produce strong NSDF peaks at 2T |
 
-The lesson: gates and thresholds are at a local optimum for the current
-algorithm. Real improvement requires either adaptive measurement (item 1)
-or a fundamentally different algorithm (item 4).
+The lesson: gate-lowering trades VR for VFA differently across datasets.
+Lowering the gate to 0.005 is a clear win on **MDB** (real solo
+performances with quiet decays — RPA 55.5% → ~70%) but a clear loss on
+**MIR-1K** (vocals with breathy gaps — RPA 89.1% → 84.4% because breath
+sounds become voiced false alarms). Per-mode profiles (item 3) plus
+adaptive calibration (item 1) handle this asymmetry: vocals keep the
+high gate explicitly; instruments inherit the adaptive floor.
 
 ---
 
@@ -137,9 +221,13 @@ or a fundamentally different algorithm (item 4).
 - **Vocals (MIR-1K right channel) must stay ≥ 88% RPA.** It's the one
   use case that currently works well — don't sacrifice it for instrument
   gains.
-- **Production gates were not lowered** in this round on purpose. The
-  bench shows lower gates help measurement but not real-world noisy mic
-  performance. Adaptive gates (item 1) is the right path.
+- **Production gates: per-mode** (post item 1). Vocals and
+  full_performance keep `rmsGate=0.018` explicitly so MIR-1K stays
+  at the YIN-class baseline; drums hard-codes 0.05; everything else
+  inherits adaptive calibration with floor 0.005 / ceiling 0.025. The
+  asymmetry is the actual fix — there is no single gate that wins on
+  both vocals (where breath gaps cause VFA at low gates) and quiet
+  instrument decays.
 - **No new dependencies > 200 KB** without a flag and lazy load.
 
 ---
