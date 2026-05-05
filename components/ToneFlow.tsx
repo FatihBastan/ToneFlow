@@ -618,6 +618,7 @@ export default function ToneFlow() {
             currentPitch={pitch.currentPitch}
             songKey={song?.key}
             feedback={feedback}
+            detector={pitch.detector}
           />
         );
       case "drums":

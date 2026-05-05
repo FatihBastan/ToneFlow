@@ -13,6 +13,7 @@ interface InstrumentSessionProps {
   currentPitch: PitchData | null;
   songKey?: string; // e.g. "A Minor"
   feedback: FeedbackType;
+  detector?: "nsdf" | "crepe";
 }
 
 export default function InstrumentSession({
@@ -21,6 +22,7 @@ export default function InstrumentSession({
   currentPitch,
   songKey,
   feedback,
+  detector,
 }: InstrumentSessionProps) {
   const [keyInfo, setKeyInfo] = useState<KeyInfo>(() => getKeyInfo("C", "Major"));
   const [inKeyPercent, setInKeyPercent] = useState(100);
@@ -98,8 +100,31 @@ export default function InstrumentSession({
             {currentPitch ? currentPitch.noteName : "---"}
           </div>
           {currentPitch && (
-            <div className="text-white/30 text-xs font-mono mt-1">
-              {currentPitch.frequency.toFixed(1)} Hz
+            <div className="text-white/30 text-xs font-mono mt-1 flex items-center justify-center gap-2">
+              <span>{currentPitch.frequency.toFixed(1)} Hz</span>
+              {currentPitch.centsOff !== undefined && Math.abs(currentPitch.centsOff) >= 1 && (
+                <span
+                  className={`text-[10px] ${
+                    Math.abs(currentPitch.centsOff) <= 15
+                      ? "text-green-400/70"
+                      : Math.abs(currentPitch.centsOff) <= 35
+                        ? "text-amber-400/70"
+                        : "text-red-400/70"
+                  }`}
+                  title="Cents off the nearest equal-tempered note"
+                >
+                  {currentPitch.centsOff > 0 ? "+" : ""}
+                  {currentPitch.centsOff.toFixed(0)}¢
+                </span>
+              )}
+              {detector === "crepe" && (
+                <span
+                  className="px-1.5 py-0.5 rounded text-[8px] uppercase tracking-widest text-purple-300/70 bg-purple-500/10 border border-purple-400/20"
+                  title="Pitch is being read by the CREPE-tiny neural detector"
+                >
+                  CREPE
+                </span>
+              )}
             </div>
           )}
         </div>
