@@ -59,11 +59,12 @@ export async function loadCrepe(modelUrl = CREPE_MODEL_URL): Promise<void> {
   if (!loadingPromise) {
     loadingPromise = (async () => {
       const ort = await import("onnxruntime-web");
-      // Direct ORT to the same package's WASM artifacts. Using the
-      // jsdelivr CDN avoids a Next.js asset-pipeline dance for now;
-      // mobile/Capacitor builds should bundle these locally instead.
-      ort.env.wasm.wasmPaths =
-        "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.25.1/dist/";
+      // Direct ORT to the locally-copied WASM artifacts under public/ort/.
+      // The `scripts/copy-ort-wasm.mjs` postinstall/prebuild hook keeps
+      // that directory in sync with `node_modules/onnxruntime-web/dist/`.
+      // Critically: this works offline (Capacitor mobile shell) where a
+      // CDN URL would 404.
+      ort.env.wasm.wasmPaths = "/ort/";
       const session = await ort.InferenceSession.create(modelUrl, {
         executionProviders: ["wasm"],
         graphOptimizationLevel: "all",

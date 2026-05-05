@@ -25,6 +25,7 @@ import { getKeyInfo, isNoteInKeyWithTolerance, estimateKey } from "@/lib/musicTh
 import { DIFFICULTY_CONFIGS } from "@/lib/difficultyConfig";
 import DifficultySelector from "@/components/DifficultySelector";
 import SessionSummary from "@/components/SessionSummary";
+import SettingsPanel from "@/components/SettingsPanel";
 import type {
   AppState,
   SongInfo,
@@ -92,24 +93,32 @@ export default function ToneFlow() {
   // ── Hooks ──
   const mic = useMicrophone();
 
-  // Feature flags. CREPE opt-in is read once at mount; toggling later
-  // requires a session restart. Honour `?crepe=1` URL param so testers
-  // can enable it without DevTools.
-  const flagsRef = useRef(getFeatureFlags());
+  // Feature flags. The CREPE setting is reactive so the settings panel
+  // toggle takes effect when the next session starts. Honour
+  // `?crepe=1` / `?crepe=0` URL params for testing without DevTools.
+  const [crepeEnabled, setCrepeEnabled] = useState(() => getFeatureFlags().crepe);
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get("crepe") === "1") {
-      setFeatureFlag("crepe", true);
-      flagsRef.current = getFeatureFlags();
+    const param = params.get("crepe");
+    if (param === "1" || param === "0") {
+      const next = param === "1";
+      setFeatureFlag("crepe", next);
+      setCrepeEnabled(next);
     }
   }, []);
+  const handleCrepeChange = useCallback((next: boolean) => {
+    setFeatureFlag("crepe", next);
+    setCrepeEnabled(next);
+  }, []);
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Per-mode threshold profiles: drums forces a high RMS gate, vocals
   // lowers clarity. Anything else inherits adaptive calibration.
   // CREPE only activates for instrument-pitch modes — vocals/drums skip it.
   const usesCrepe =
-    flagsRef.current.crepe &&
+    crepeEnabled &&
     !!selectedMode &&
     selectedMode !== "vocals" &&
     selectedMode !== "drums" &&
@@ -729,6 +738,26 @@ export default function ToneFlow() {
           </AnimatePresence>
         </div>
 
+        {/* Settings gear — top right, always visible */}
+        <button
+          onClick={() => setSettingsOpen(true)}
+          aria-label="Open settings"
+          className="fixed top-3 right-3 sm:top-5 sm:right-5 z-30 w-9 h-9 rounded-full bg-white/8 hover:bg-white/15 border border-white/10 flex items-center justify-center transition-colors safe-top"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            className="w-4 h-4 text-white/55"
+          >
+            <path
+              fillRule="evenodd"
+              d="M8.34 1.804A1 1 0 019.32 1h1.36a1 1 0 01.98.804l.295 1.473c.497.144.971.342 1.416.587l1.25-.834a1 1 0 011.262.125l.962.962a1 1 0 01.125 1.262l-.834 1.25c.245.445.443.919.587 1.416l1.473.294a1 1 0 01.804.98v1.361a1 1 0 01-.804.98l-1.473.295a6.95 6.95 0 01-.587 1.416l.834 1.25a1 1 0 01-.125 1.262l-.962.962a1 1 0 01-1.262.125l-1.25-.834a6.95 6.95 0 01-1.416.587l-.294 1.473a1 1 0 01-.98.804H9.32a1 1 0 01-.98-.804l-.295-1.473a6.95 6.95 0 01-1.416-.587l-1.25.834a1 1 0 01-1.262-.125l-.962-.962a1 1 0 01-.125-1.262l.834-1.25a6.95 6.95 0 01-.587-1.416l-1.473-.294A1 1 0 011 10.68V9.32a1 1 0 01.804-.98l1.473-.295c.144-.497.342-.971.587-1.416l-.834-1.25a1 1 0 01.125-1.262l.962-.962A1 1 0 015.38 3.03l1.25.834a6.95 6.95 0 011.416-.587l.294-1.473zM10 13a3 3 0 100-6 3 3 0 000 6z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </button>
+
         {/* ── Difficulty selector ── */}
         <AnimatePresence>
           {appState === "detected" && modeConfig?.judgesCorrectness && selectedMode !== "drums" && (
@@ -1030,6 +1059,19 @@ export default function ToneFlow() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Settings panel */}
+      <SettingsPanel
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        detector={pitch.detector}
+        modelLoading={pitch.pitchModelLoading}
+        modelError={pitch.pitchModelError}
+        effectiveRmsGate={pitch.effectiveRmsGate}
+        noiseFloor={pitch.noiseFloor}
+        crepeEnabled={crepeEnabled}
+        onCrepeChange={handleCrepeChange}
+      />
 
       {/* Session summary overlay */}
       <AnimatePresence>
