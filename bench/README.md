@@ -136,7 +136,8 @@ For context — published results on these datasets (real, not synthetic):
 
 ## Notes
 
-- Runs are CPU-bound and serial. Full MDB-stem-synth on a laptop is ~10–15 minutes.
+- Runs are CPU-bound and serial. Full MDB-stem-synth (NSDF) on a laptop is ~10–15 minutes; CREPE-tiny on the same set is ~3 hours of CPU.
 - Use `--limit N` while iterating on detector changes; full runs only for final numbers.
 - The scripts print a single trailing line per stem; pipe to `tee bench.log` to keep output.
 - All three runners share `bench/lib/detector.ts` so changes to the production hook automatically flow through.
+- For the long CREPE run, see [colab/](./colab/) — a one-click notebook that runs the full bench on free-tier Google Colab CPU.

@@ -70,6 +70,9 @@ See `bench/RESULTS.md` for the measured numbers.
 ### What I'd do first when we come back
 1. **Full 30-stem CREPE MDB bench** — confirm the 93% number on the
    full set (the run we kicked off this session was killed at stem ~20).
+   Now runnable on free-tier Google Colab via
+   [bench/colab/mdb_bench.ipynb](bench/colab/mdb_bench.ipynb) — one
+   click, ~3.5 h end-to-end, no local CPU burn.
 2. **Smoke-test the trimmed APK on a real device** — confirm ORT
    actually selects the asyncify variant when the others are absent
    (no 404 thrash, CREPE inference still produces sane output). If it
