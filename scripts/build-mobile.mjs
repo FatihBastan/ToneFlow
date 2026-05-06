@@ -14,7 +14,7 @@
  * set (the mobile bundle uses it to reach the deployed API).
  */
 
-import { existsSync, cpSync, rmSync } from "node:fs";
+import { existsSync, cpSync, rmSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,6 +26,17 @@ const API_DIR = join(ROOT, "app/api");
 // routes regardless of the leading `.`, so a sibling stash inside the
 // project root is the only safe spot.
 const STASH_DIR = join(ROOT, ".api-stash");
+const OUT_ORT_DIR = join(ROOT, "out/ort");
+
+// Capacitor's Android WebView has no crossOriginIsolated, no WebGPU,
+// and no JSPI, so the only ORT WASM variant that can actually run is
+// the asyncify one. The other three (~52 MB combined) are dead weight
+// in the APK. Keep `public/ort/` intact for the Vercel web build —
+// only prune the static-export copy under `out/ort/`.
+const MOBILE_ORT_KEEP = new Set([
+  "ort-wasm-simd-threaded.asyncify.mjs",
+  "ort-wasm-simd-threaded.asyncify.wasm",
+]);
 
 if (!process.env.NEXT_PUBLIC_API_URL) {
   console.error(
@@ -97,4 +108,26 @@ if (result.error) {
   console.error("[build-mobile] failed to spawn next build:", result.error);
   process.exit(1);
 }
+
+if ((result.status ?? 0) === 0 && existsSync(OUT_ORT_DIR)) {
+  let removed = 0;
+  let removedBytes = 0;
+  let kept = 0;
+  for (const f of readdirSync(OUT_ORT_DIR)) {
+    if (MOBILE_ORT_KEEP.has(f)) {
+      kept++;
+      continue;
+    }
+    const p = join(OUT_ORT_DIR, f);
+    const size = statSync(p).size;
+    unlinkSync(p);
+    removed++;
+    removedBytes += size;
+  }
+  const mb = (removedBytes / (1024 * 1024)).toFixed(1);
+  console.log(
+    `[build-mobile] pruned ${removed} ORT WASM variants (${mb} MB), kept ${kept} for asyncify-only Capacitor WebView`
+  );
+}
+
 process.exit(result.status ?? 0);

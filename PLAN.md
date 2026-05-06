@@ -1,11 +1,11 @@
 # ToneFlow upgrade plan
 
-What to work on next, ordered by impact-to-effort. Updated 2026-05-05.
+What to work on next, ordered by impact-to-effort. Updated 2026-05-06.
 See `bench/RESULTS.md` for the measured numbers.
 
 ---
 
-## Status as of 2026-05-05
+## Status as of 2026-05-06
 
 ### Done
 - ✅ **Tier 1 #1** — adaptive RMS gate
@@ -35,6 +35,14 @@ See `bench/RESULTS.md` for the measured numbers.
   detector, effective RMS gate, measured noise floor, model error.
 - ✅ **Tests** — 639/641 (629 pre-existing + 6 Goertzel + 4 spectral
   guard; the same 2 B6 unit tests are still pre-existing failures).
+- ✅ **Mobile WASM trim** — `scripts/build-mobile.mjs` now prunes
+  `out/ort/` after the static export, keeping only the asyncify pair
+  (`ort-wasm-simd-threaded.asyncify.{mjs,wasm}`). The other three
+  variants (threaded SIMD, JSEP/WebGPU, JSPI) can't run in Capacitor's
+  Android WebView anyway — no `crossOriginIsolated`, no WebGPU, no
+  JSPI. APK payload drops from ~76 MB to ~23 MB of WASM (50.8 MB
+  saved). `public/ort/` keeps the full set so the Vercel web build
+  still ships every variant for browser auto-selection.
 
 ### Partial
 - 🟡 **Tier 3 #8** — calibration UI is a small toast; no full splash
@@ -50,15 +58,17 @@ See `bench/RESULTS.md` for the measured numbers.
   polyphonic measurement.
 
 ### What I'd do first when we come back
-1. **Trim mobile WASM bundle** — currently 73 MB of WASM ships in the
-   APK because we copy all four ORT variants. Capacitor's WebView only
-   needs the asyncify variant (~22 MB) without COOP/COEP. Pruning
-   would save ~50 MB of APK size. ~15 min.
-2. **Tier 3 #8 calibration splash** — block session start until
+1. **Tier 3 #8 calibration splash** — block session start until
    calibration completes, show measured noise floor with quiet /
    moderate / loud label, give the user a "recalibrate" button. ~45 min.
-3. **Full 30-stem CREPE MDB bench** — confirm the 93% number on the
+2. **Full 30-stem CREPE MDB bench** — confirm the 93% number on the
    full set (the run we kicked off this session was killed at stem ~20).
+3. **Smoke-test the trimmed APK on a real device** — confirm ORT
+   actually selects the asyncify variant when the others are absent
+   (no 404 thrash, CREPE inference still produces sane output). If it
+   probes the missing files first, set `env.wasm.wasmPaths` to an
+   explicit `{ "ort-wasm-simd-threaded.asyncify.wasm": "/ort/..." }`
+   map gated on a Capacitor-native runtime check.
 
 ---
 
