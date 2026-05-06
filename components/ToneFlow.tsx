@@ -26,6 +26,7 @@ import { DIFFICULTY_CONFIGS } from "@/lib/difficultyConfig";
 import DifficultySelector from "@/components/DifficultySelector";
 import SessionSummary from "@/components/SessionSummary";
 import SettingsPanel from "@/components/SettingsPanel";
+import CalibrationSplash from "@/components/CalibrationSplash";
 import type {
   AppState,
   SongInfo,
@@ -1013,23 +1014,11 @@ export default function ToneFlow() {
         </div>
       </div>
 
-      {/* Mic calibration toast — shown for ~2s when a session begins so
-          the user knows the gate is adaptive and not just unresponsive. */}
-      <AnimatePresence>
-        {pitch.calibrating && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-            role="status"
-            className="fixed top-20 left-1/2 -translate-x-1/2 z-30 glass px-4 py-2 text-xs text-white/70 flex items-center gap-2"
-          >
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
-            Calibrating mic — hold still…
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Mic calibration splash — full-screen overlay during the 2s
+          adaptive-gate measurement window. Replaces the old corner toast
+          so "hold still" is unmissable. Only fires for modes that don't
+          pin the gate (drums/vocals skip calibration entirely). */}
+      <CalibrationSplash active={pitch.calibrating} />
 
       {/* CREPE model load + status toast (only visible when the flag is on). */}
       <AnimatePresence>
@@ -1070,6 +1059,9 @@ export default function ToneFlow() {
         modelError={pitch.pitchModelError}
         effectiveRmsGate={pitch.effectiveRmsGate}
         noiseFloor={pitch.noiseFloor}
+        calibrating={pitch.calibrating}
+        onRecalibrate={pitch.recalibrate}
+        canRecalibrate={typeof pitchOpts?.rmsGate !== "number"}
         crepeEnabled={crepeEnabled}
         onCrepeChange={handleCrepeChange}
       />

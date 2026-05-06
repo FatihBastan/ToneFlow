@@ -378,6 +378,25 @@ export function usePitchDetection(
     rafRef.current = requestAnimationFrame(detect);
   }, [detect]);
 
+  const recalibrate = useCallback(() => {
+    // No-op when an explicit override is in effect — modes like drums
+    // and vocals deliberately pin the gate, so re-measuring would just
+    // overwrite their carefully chosen value with whatever the room
+    // happens to be doing.
+    if (typeof optionsRef.current?.rmsGate === "number") return;
+    if (!activeRef.current) return;
+    calibratingRef.current = true;
+    calibrationStartRef.current = performance.now();
+    calibrationSamplesRef.current = [];
+    adaptiveGateRef.current = -1;
+    setState((prev) => ({
+      ...prev,
+      calibrating: true,
+      effectiveRmsGate: -1,
+      noiseFloor: -1,
+    }));
+  }, []);
+
   const stopDetection = useCallback(() => {
     activeRef.current = false;
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -419,5 +438,6 @@ export function usePitchDetection(
     ...state,
     startDetection,
     stopDetection,
+    recalibrate,
   };
 }

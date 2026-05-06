@@ -12,9 +12,40 @@ interface SettingsPanelProps {
   modelError: string | null;
   effectiveRmsGate: number;
   noiseFloor: number;
+  /** True while the calibration window is collecting samples. */
+  calibrating: boolean;
+  /** Triggers another 2s calibration window. May be no-op for override modes. */
+  onRecalibrate: () => void;
+  /** False when the active mode pins the gate (drums / vocals). */
+  canRecalibrate: boolean;
   // CREPE flag (controlled — parent owns state)
   crepeEnabled: boolean;
   onCrepeChange: (next: boolean) => void;
+}
+
+/**
+ * Bucket the measured ambient RMS into a user-facing label. Thresholds
+ * are anchored to the adaptive-gate envelope (`ADAPTIVE_GATE_FLOOR =
+ * 0.005`, `_CEILING = 0.025` in usePitchDetection): below floor reads
+ * as "Quiet" because the gate is clamped down; above ~0.012 the gate
+ * is heading toward the ceiling and quiet notes will start to clip.
+ */
+function classifyNoiseFloor(noiseFloor: number): {
+  label: string;
+  tone: "quiet" | "moderate" | "loud";
+  hint: string | null;
+} {
+  if (noiseFloor < 0.005) {
+    return { label: "Quiet", tone: "quiet", hint: null };
+  }
+  if (noiseFloor < 0.012) {
+    return { label: "Moderate", tone: "moderate", hint: null };
+  }
+  return {
+    label: "Loud",
+    tone: "loud",
+    hint: "Quiet notes may clip — try a quieter spot or move closer to the mic.",
+  };
 }
 
 /**
@@ -33,9 +64,20 @@ export default function SettingsPanel({
   modelError,
   effectiveRmsGate,
   noiseFloor,
+  calibrating,
+  onRecalibrate,
+  canRecalibrate,
   crepeEnabled,
   onCrepeChange,
 }: SettingsPanelProps) {
+  const noiseClass = noiseFloor > 0 ? classifyNoiseFloor(noiseFloor) : null;
+  const toneStyle = noiseClass
+    ? noiseClass.tone === "quiet"
+      ? "text-emerald-300/90"
+      : noiseClass.tone === "moderate"
+        ? "text-sky-300/90"
+        : "text-amber-300/90"
+    : "text-white/80";
   // Close on Escape
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -142,18 +184,41 @@ export default function SettingsPanel({
                   </div>
                   <div className="flex justify-between">
                     <dt className="text-white/50">Noise floor</dt>
-                    <dd className="text-white/80 font-mono">
-                      {noiseFloor > 0
-                        ? noiseFloor.toFixed(4)
-                        : "—"}
+                    <dd className="font-mono flex items-center gap-2">
+                      <span className="text-white/80">
+                        {noiseFloor > 0 ? noiseFloor.toFixed(4) : "—"}
+                      </span>
+                      {noiseClass && (
+                        <span className={`text-[10px] uppercase tracking-wider ${toneStyle}`}>
+                          {noiseClass.label}
+                        </span>
+                      )}
                     </dd>
                   </div>
+                  {noiseClass?.hint && (
+                    <div className="text-amber-300/70 text-[11px] mt-1 leading-snug">
+                      {noiseClass.hint}
+                    </div>
+                  )}
                   {modelError && (
                     <div className="text-amber-300/80 text-[11px] mt-2">
                       {modelError}
                     </div>
                   )}
                 </dl>
+
+                <button
+                  type="button"
+                  onClick={onRecalibrate}
+                  disabled={!canRecalibrate || calibrating}
+                  className="mt-3 w-full text-xs font-medium px-3 py-2 rounded-md bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-white/5 disabled:cursor-not-allowed transition-colors text-white/75"
+                >
+                  {calibrating
+                    ? "Calibrating…"
+                    : canRecalibrate
+                      ? "Recalibrate mic"
+                      : "Recalibrate (mode uses fixed gate)"}
+                </button>
               </div>
 
               <div className="text-[10px] text-white/30 pt-2 leading-snug">

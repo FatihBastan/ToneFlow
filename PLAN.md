@@ -43,10 +43,20 @@ See `bench/RESULTS.md` for the measured numbers.
   JSPI. APK payload drops from ~76 MB to ~23 MB of WASM (50.8 MB
   saved). `public/ort/` keeps the full set so the Vercel web build
   still ships every variant for browser auto-selection.
+- ✅ **Tier 3 #8 calibration splash** — replaced the corner toast with
+  a full-screen `CalibrationSplash` overlay that visually pauses the
+  UI during the 2s adaptive-gate measurement window. SettingsPanel
+  classifies the measured noise floor (Quiet / Moderate / Loud against
+  the gate envelope), surfaces a hint when the room is too loud for
+  quiet notes to clear the gate, and exposes a "Recalibrate mic"
+  button that re-enters the calibration window without tearing down
+  the rAF loop. The button greys out for modes that pin the gate
+  (drums, vocals) since recalibrating those would just overwrite the
+  fixed value. `usePitchDetection.recalibrate()` is the new public
+  API.
 
 ### Partial
-- 🟡 **Tier 3 #8** — calibration UI is a small toast; no full splash
-  with measured noise floor display + manual recalibrate.
+- _(none — Tier 3 #8 shipped 2026-05-06, see below)_
 
 ### Not started
 - ⬜ **Tier 2 #5** — polyphonic detection ("song in the room"). Spotify
@@ -58,17 +68,19 @@ See `bench/RESULTS.md` for the measured numbers.
   polyphonic measurement.
 
 ### What I'd do first when we come back
-1. **Tier 3 #8 calibration splash** — block session start until
-   calibration completes, show measured noise floor with quiet /
-   moderate / loud label, give the user a "recalibrate" button. ~45 min.
-2. **Full 30-stem CREPE MDB bench** — confirm the 93% number on the
+1. **Full 30-stem CREPE MDB bench** — confirm the 93% number on the
    full set (the run we kicked off this session was killed at stem ~20).
-3. **Smoke-test the trimmed APK on a real device** — confirm ORT
+2. **Smoke-test the trimmed APK on a real device** — confirm ORT
    actually selects the asyncify variant when the others are absent
    (no 404 thrash, CREPE inference still produces sane output). If it
    probes the missing files first, set `env.wasm.wasmPaths` to an
    explicit `{ "ort-wasm-simd-threaded.asyncify.wasm": "/ort/..." }`
    map gated on a Capacitor-native runtime check.
+3. **Splash UX polish** — the splash currently auto-dismisses at 2s
+   but doesn't briefly show the result; consider a 0.8s "All set —
+   Quiet/Moderate/Loud" reveal before dismissing so the user knows
+   what changed. Cheap once the classification helper is already in
+   `SettingsPanel.tsx`.
 
 ---
 
