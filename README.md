@@ -8,7 +8,7 @@ Real-time music detection and performance tracking app. Sing or play an instrume
 
 - **Two pitch detectors, picked per mode.** A hand-written NSDF autocorrelation pipeline (high-pass → Hann window → NSDF → spectral sub-octave guard → median smoothing → octave-jump correction) and **CREPE-tiny** (deep-learning pitch tracker, 1.9 MB ONNX) running in the browser with ONNX Runtime Web. CREPE is used for instruments, NSDF for vocals, because the benchmarks below say so.
 - **Benchmarked on real datasets**, not just synthetic tones — the harness in [`bench/`](bench/) runs the exact production detector on NSynth, MDB-stem-synth and MIR-1K.
-- **Song recognition and lyrics sync**: ACRCloud audio fingerprinting gives the song and play offset; LRCLIB / Musixmatch lyrics are synced word-by-word from that offset.
+- **Song recognition and lyrics sync**: ACRCloud audio fingerprinting gives the song and play offset; LRCLIB / Musixmatch line-synced lyrics are aligned to that offset, with estimated per-word timing for karaoke highlighting.
 - **Runs on Android** through Capacitor, with the ONNX Runtime WASM bundled locally.
 
 ### Benchmark summary
@@ -28,7 +28,7 @@ mic ──► Web Audio API ──► pitch detector (NSDF or CREPE-tiny) ──
   │
   └──► 5–10 s WAV clip ──► /api/recognize (ACRCloud, HMAC-signed server-side)
                               └─► song + play offset ──► /api/spotify (album art → color palette → animated background)
-                                                     └─► /api/lyrics (LRCLIB / Musixmatch → word-level karaoke)
+                                                     └─► /api/lyrics (LRCLIB / Musixmatch → karaoke lyrics)
 ```
 
 API keys stay on the server: the browser only talks to the Next.js routes in `app/api/`.
